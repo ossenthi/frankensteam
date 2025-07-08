@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -e
+
+# Purge temp files on init and exit
+function clean () {
+  rm -rf /tmp/{,.[!.],..?}* || :
+}
+trap clean SIGINT SIGTERM
+clean
+
+# Lang
+if [ ! -z ${LC_ALL+x} ]; then
+  export LANGUAGE="${LC_ALL%.UTF-8}"
+  export LANG="${LC_ALL}"
+fi
+
+# Environment
+export HOME=/home/steam-user
+export PULSE_RUNTIME_PATH=/var/run/pulse
+if [ -z ${DRINODE+x} ]; then
+  DRINODE="/dev/dri/renderD128"
+fi
+KASMNVC_HW3D=''
+if [ ! -z ${HW3D+x} ]; then
+  KASMVNC_HW3D="-hw3d"
+fi
+
+# Notification daemon
+export $(dbus-launch)
+dunst &
+
+## Directory setup for home folder ##
+# Create folders for upload/download
+mkdir -p $HOME/Desktop $HOME/Downloads
+for FOLDER in Uploads Downloads; do
+  if [[ ! -L $HOME/Desktop/$FOLDER ]]; then
+    mkdir -p $HOME/$FOLDER
+  fi
+done
+fi
+rm -rf $HOME/.config/pulse
+
+# Startup Script for DE
+mkdir -p $HOME/.vnc
+cp \
+  /defaults/startwm.sh \
+  $HOME/.vnc/xstartup
+touch $HOME/.vnc/.de-was-selected
+# Add proot-apps
+if [ ! -f "${HOME}/.local/bin/proot-apps" ]; then
+  mkdir -p ${HOME}/.local/bin/
+  cp /proot-apps/* ${HOME}/.local/bin/
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> $HOME/.bashrc
+elif ! diff -q /proot-apps/pversion ${HOME}/.local/bin/pversion > /dev/null; then
+  cp /proot-apps/* ${HOME}/.local/bin/
+fi
+
+## Network egress wait ##
+while :; do
+  interfaces=$(ip link show type veth | awk -F: '/^[0-9]+: / {print $2}' | awk '{print $1}' | sed 's/@.*//')
+  if [ -z "$interfaces" ]; then
+    sleep 1
+    continue
+  fi
+  for interface in $interfaces; do
+    if [[ $interface == eth* ]]; then
+      break 2
+    fi
+    if [[ $interface == k-p-* ]]; then
+      egress_file="/dockerstartup/.egress_status"
+      while [ ! -f "$egress_file" ]; do
+        sleep 1
+      done
+      egress_status=$(cat $egress_file)
+      if [ "$egress_status" == "ready" ]; then
+        if [ -z "$KASM_PROFILE_LDR" ]; then
+          http_proxy="" https_proxy="" curl -k "https://${KASM_API_HOST}:${KASM_API_PORT}/api/set_kasm_session_status?token=${KASM_API_JWT}" -H 'Content-Type: application/json' -d '{"status": "running"}'
+        fi
+        break 2
+      fi
+      if [ "$egress_status" == "error" ]; then
+        echo "Failed to establish egress gateway. Exiting..."
+        exit 1
+      fi
+    fi
+  done
+  sleep 1
+done
+
