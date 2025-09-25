@@ -53,7 +53,7 @@ check_initialization() {
 if [ ! -f "${INIT_FLAG}" ]; then
     setup_permissions
     install_arch_packages
-    touch "${INIT_FLAG}"  # Create the flag file to indicate initialization is done
+    sudo touch "${INIT_FLAG}"  # Create the flag file to indicate initialization is done
     echo "Initialization completed successfully."
 else
     echo "Initialization has already been done. Skipping."
