@@ -38,8 +38,6 @@ error_handler() {
     exit "${error_code}"
 }
 
-trap 'error_handler ${LINENO} $?' ERR
-
 check_dependencies() {
     for cmd in "${REQUIRED_COMMANDS[@]}"; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -205,6 +203,7 @@ main() {
         fi
     else
         echo "Creating container '${CONTAINER_NAME}'..."
+        trap 'error_handler ${LINENO} $?' ERR
         check_dependencies
         validate_and_set_paths
         setup_nvidia_gpu
