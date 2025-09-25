@@ -1,0 +1,67 @@
+#!/bin/bash
+readonly USER_UID=1000
+readonly USER_GID=1000
+readonly USER_NAME=user
+
+# Define a flag file to check if initialization has been done
+INIT_FLAG="/var/lib/initialization_done"
+
+setup_permissions() {
+    echo "setting up permissions"
+    sudo chmod 1777 /tmp/.X11-unix
+}
+
+install_arch_packages() {
+    echo "Starting interactive package installation in the container..."
+
+    set -e
+    echo "Updating system packages"
+    sudo pacman -Syu   --ignore=linux-api-headers,systemd*
+
+    declare -A package_groups=(
+        ["CORE"]="paru nano which"
+        ["STEAM"]="steam mangohud steam-native-runtime proton-cachyos wqy-zenhei"
+        ["AUDIO"]="pipewire pipewire-alsa pipewire-pulse"
+        ["GPU"]="mesa-utils vulkan-tools"
+    )
+    local nvidia_version=$(pacman -Si nvidia-utils | grep Version | awk '{print $3}' | head -n 1)
+    for group in "${!package_groups[@]}"; do
+        echo "Installing package group: $group"
+        sudo pacman -S --needed  --assume-installed=opengl-driver,mesa,mesa-libgl,opencl-driver,vulkan-driver,nvidia-utils=$nvidia_version  ${package_groups[$group]}
+
+    done
+}
+
+
+set_env(){
+    echo "setting env variables"
+    export WAYLAND_DISPLAY=wayland-0
+    export NVIDIA_DRIVER_CAPABILITIES=all
+    export DISPLAY=:0
+    export __NV_PRIME_RENDER_OFFLOAD=1
+    #export __VK_LAYER_NV_optimus=NVIDIA_only
+    export __GLX_VENDOR_LIBRARY_NAME=nvidia
+    export XAUTHORITY=$HOME/xauth
+    export MANGOHUD=1
+    export MANGOHUD_CONFIGFILE=$HOME/MangoHud.conf
+}
+
+start_audio() {
+    pipewire-pulse >/dev/null 2>&1 & # Start the PipeWire PulseAudio replacement (for PulseAudio compatibility)
+}
+check_initialization() {
+if [ ! -f "${INIT_FLAG}" ]; then
+    setup_permissions
+    install_arch_packages
+    touch "${INIT_FLAG}"  # Create the flag file to indicate initialization is done
+    echo "Initialization completed successfully."
+else
+    echo "Initialization has already been done. Skipping."
+fi
+}
+set_env
+start_audio
+check_initialization
+steam-native
+exit 0
+
